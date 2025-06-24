@@ -520,7 +520,7 @@ def main(
     random_init: bool = False,
     tie_embeddings: bool = False,
     output_dir: str = "./output/",
-    tf32: bool = True,
+    fp16: bool = True,
     torch_compile: bool = True,
     tokenizer_class: str = "MeanScaleUniformBins",
     tokenizer_kwargs: str = "{'low_limit': -15.0, 'high_limit': 15.0}",
@@ -539,18 +539,18 @@ def main(
     top_p: float = 1.0,
     seed: Optional[int] = None,
 ):
-    if tf32 and not (
-        torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
-    ):
-        # TF32 floating point format is available only on NVIDIA GPUs
-        # with compute capability 8 and above. See link for details.
-        # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability-8-x
-        log_on_main(
-            "TF32 format is only available on devices with compute capability >= 8. "
-            "Setting tf32 to False.",
-            logger,
-        )
-        tf32 = False
+    # if fp16 and not (
+    #     torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
+    # ):
+    #     # fp16 floating point format is available only on NVIDIA GPUs
+    #     # with compute capability 8 and above. See link for details.
+    #     # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability-8-x
+    #     log_on_main(
+    #         "fp16 format is only available on devices with compute capability >= 8. "
+    #         "Setting fp16 to False.",
+    #         logger,
+    #     )
+    #     fp16 = False
 
     if seed is None:
         seed = random.randint(0, 2**32)
@@ -672,7 +672,7 @@ def main(
         max_steps=max_steps,
         gradient_accumulation_steps=gradient_accumulation_steps,
         dataloader_num_workers=dataloader_num_workers,
-        tf32=tf32,  # remove this if not using Ampere GPUs (e.g., A100)
+        fp16=fp16,  # remove this if not using Ampere GPUs (e.g., A100)
         torch_compile=torch_compile,
         ddp_find_unused_parameters=False,
         remove_unused_columns=False,
