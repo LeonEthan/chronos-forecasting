@@ -73,8 +73,8 @@ def modify_qwen_model_and_save(
 if __name__ == "__main__":
     # 执行函数
     modify_qwen_model_and_save(
-        model_name="/data/cuizhengliang/llm_hub/llm_hub/Qwen/Qwen3-0.6B",
-        target_num_layers=6,
+        model_name="/data/cuizhengliang/llm_hub/Qwen/Qwen3-0.6B",
+        target_num_layers=14,
         target_num_key_value_heads=4,
-        output_dir="ckpt/my_qwen3_6_layers_4q2kv"
+        output_dir="ckpt/my_qwen3_14_layers_8q4kv"
     )
