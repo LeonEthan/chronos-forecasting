@@ -36,9 +36,12 @@ def modify_qwen_model_and_save(
 
         print(f"\n正在修改配置参数...")
         # 2. 修改配置参数
-        config.num_hidden_layers = target_num_layers
-        config.num_key_value_heads = target_num_key_value_heads
-        config.num_attention_heads = target_num_attention_heads # 根据KV头调整Q头
+        config.num_hidden_layers = 12
+        config.hidden_size = 768
+        config.num_attention_heads = 12  # 768/12=64
+        config.num_key_value_heads = 6   # 比例可自定
+        config.max_position_embeddings = 1024
+        config.intermediate_size = 3072  # 768*4
 
         print(f"修改后模型配置：")
         print(f"  新层数 (num_hidden_layers): {config.num_hidden_layers}")
@@ -74,7 +77,7 @@ if __name__ == "__main__":
     # 执行函数
     modify_qwen_model_and_save(
         model_name="/data/cuizhengliang/llm_hub/llm_hub/Qwen/Qwen3-0.6B",
-        target_num_layers=6,
+        target_num_layers=12,
         target_num_key_value_heads=4,
-        output_dir="ckpt/my_qwen3_6_layers_4q2kv"
+        output_dir="ckpt/island"
     )
