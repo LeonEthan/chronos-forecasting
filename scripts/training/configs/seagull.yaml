@@ -16,7 +16,7 @@ optim: adamw_torch_fused
 num_samples: 20
 shuffle_buffer_length: 10_000
 gradient_accumulation_steps: 1
-model_id: /data/cuizhengliang/chronos-forecasting/scripts/ckpt/my_qwen3_14_layers_8q4kv
+model_id: /data/cuizhengliang/chronos-forecasting/scripts/ckpt/seagull
 model_type: causal
 random_init: false
 tie_embeddings: true

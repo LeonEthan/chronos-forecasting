@@ -26,24 +26,30 @@ def modify_qwen_model_and_save(
         print(f"  层数 (num_hidden_layers): {config.num_hidden_layers}")
         print(f"  Q 头 (num_attention_heads): {config.num_attention_heads}")
         print(f"  KV 头 (num_key_value_heads): {config.num_key_value_heads}")
+        # print(f"ffn_hidden_size: {config.ffn_hidden_size}")  # 删除或注释掉这一行
+        # print(f"hidden_size: {config.hidden_size}")          # 如果没有hidden_size，也注释掉
+        print(f"全部配置字段: {config.to_dict()}")
 
         # 计算新的 Q 头数量 (保持 Q/KV 比例不变，或根据 8Q4KV 的要求调整)
         # 原始Q是16，KV是8，比例是2:1
         # 目标KV是4，所以目标Q应该是 4 * (16/8) = 8
-        target_num_attention_heads = target_num_key_value_heads * (
-            config.num_attention_heads // config.num_key_value_heads
-        )
+        # target_num_attention_heads = target_num_key_value_heads * (
+        #     config.num_attention_heads // config.num_key_value_heads
+        # )
 
         print(f"\n正在修改配置参数...")
         # 2. 修改配置参数
-        config.num_hidden_layers = target_num_layers
-        config.num_key_value_heads = target_num_key_value_heads
-        config.num_attention_heads = target_num_attention_heads # 根据KV头调整Q头
+        config.num_hidden_layers = 12
+        config.hidden_size = 768
+        config.num_attention_heads = 12  # 768/12=64
+        config.num_key_value_heads = 6   # 比例可自定
+        config.max_position_embeddings = 512
+        config.intermediate_size = 3072  # 768*4
 
         print(f"修改后模型配置：")
         print(f"  新层数 (num_hidden_layers): {config.num_hidden_layers}")
-        print(f"  新 Q 头 (num_attention_heads): {config.num_attention_heads}")
-        print(f"  新 KV 头 (num_key_value_heads): {config.num_key_value_heads}")
+        # print(f"  新 Q 头 (num_attention_heads): {config.num_attention_heads}")
+        # print(f"  新 KV 头 (num_key_value_heads): {config.num_key_value_heads}")
 
         # 3. 创建新的模型实例（不加载预训练权重，只根据新配置初始化结构）
         print(f"\n正在根据新配置创建新的模型结构...")
@@ -75,6 +81,6 @@ if __name__ == "__main__":
     modify_qwen_model_and_save(
         model_name="/data/cuizhengliang/llm_hub/Qwen/Qwen3-0.6B",
         target_num_layers=14,
-        target_num_key_value_heads=4,
-        output_dir="ckpt/my_qwen3_14_layers_8q4kv"
+        target_num_key_value_heads=14,
+        output_dir="ckpt/seagull"
     )
