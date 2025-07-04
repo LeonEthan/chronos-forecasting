@@ -49,6 +49,9 @@ from chronos import ChronosConfig, ChronosTokenizer
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
+# Set up logging
+logger = logging.getLogger(__name__)
+
 
 def is_main_process() -> bool:
     """
@@ -150,6 +153,89 @@ def get_next_path(
     )
 
     return base_dir / fname
+
+
+def check_torch_version_compatibility() -> tuple[bool, str]:
+    """
+    Check if the current PyTorch version is compatible with transformers checkpoint loading.
+
+    Returns
+    -------
+    tuple[bool, str]
+        (is_compatible, message)
+    """
+    import torch
+    import transformers
+
+    torch_version = torch.__version__
+    transformers_version = transformers.__version__
+
+    # Parse torch version
+    torch_major, torch_minor = map(int, torch_version.split('.')[:2])
+
+    # Check if torch version is >= 2.6
+    if torch_major > 2 or (torch_major == 2 and torch_minor >= 6):
+        return True, f"PyTorch {torch_version} is compatible"
+    else:
+        message = (
+            f"PyTorch {torch_version} may have compatibility issues with transformers {transformers_version}. "
+            f"Consider upgrading to PyTorch 2.6+ or ensure checkpoints use safetensors format."
+        )
+        return False, message
+
+
+def validate_checkpoint_path(checkpoint_path: str) -> bool:
+    """
+    Validate if the checkpoint path exists and contains necessary files.
+
+    Parameters
+    ----------
+    checkpoint_path
+        Path to the checkpoint directory.
+
+    Returns
+    -------
+    bool
+        True if the checkpoint is valid, False otherwise.
+    """
+    if not checkpoint_path:
+        return False
+
+    checkpoint_dir = Path(checkpoint_path)
+    if not checkpoint_dir.exists() or not checkpoint_dir.is_dir():
+        log_on_main(f"Checkpoint path does not exist: {checkpoint_path}", logger, logging.WARNING)
+        return False
+
+    # Check for essential checkpoint files
+    required_files = ["config.json", "pytorch_model.bin"]
+    # Also check for safetensors format
+    safetensors_files = list(checkpoint_dir.glob("*.safetensors"))
+
+    has_pytorch_model = (checkpoint_dir / "pytorch_model.bin").exists()
+    has_safetensors = len(safetensors_files) > 0
+    has_config = (checkpoint_dir / "config.json").exists()
+
+    if not has_config:
+        log_on_main(f"Missing config.json in checkpoint: {checkpoint_path}", logger, logging.WARNING)
+        return False
+
+    if not (has_pytorch_model or has_safetensors):
+        log_on_main(f"Missing model weights in checkpoint: {checkpoint_path}", logger, logging.WARNING)
+        return False
+
+    # Check PyTorch version compatibility
+    is_compatible, compatibility_msg = check_torch_version_compatibility()
+    if not is_compatible:
+        log_on_main(compatibility_msg, logger, logging.WARNING)
+        if has_pytorch_model and not has_safetensors:
+            log_on_main(
+                f"Checkpoint contains pytorch_model.bin but no safetensors files. "
+                f"This may cause loading issues with current PyTorch version.",
+                logger, logging.WARNING
+            )
+
+    log_on_main(f"Valid checkpoint found at: {checkpoint_path}", logger)
+    return True
 
 
 def load_model(
@@ -538,6 +624,7 @@ def main(
     top_k: int = 50,
     top_p: float = 1.0,
     seed: Optional[int] = None,
+    resume_from_checkpoint: Optional[str] = None,
 ):
     # if fp16 and not (
     #     torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
@@ -559,7 +646,7 @@ def main(
     transformers.set_seed(seed=seed)
 
     raw_training_config = deepcopy(locals())
-    output_dir = Path(output_dir)
+    original_output_dir = output_dir  # Keep original string for comparison
     training_data_paths = ast.literal_eval(training_data_paths)
     assert isinstance(training_data_paths, list)
 
@@ -585,7 +672,59 @@ def main(
 
     assert model_type in ["seq2seq", "causal"]
 
-    output_dir = get_next_path("run", base_dir=output_dir, file_type="")
+    # Handle checkpoint resuming
+    resume_checkpoint_path = None
+    if resume_from_checkpoint:
+        if validate_checkpoint_path(resume_from_checkpoint):
+            # Check PyTorch compatibility before proceeding
+            is_compatible, compatibility_msg = check_torch_version_compatibility()
+            if not is_compatible:
+                log_on_main(
+                    f"PyTorch version compatibility warning: {compatibility_msg}",
+                    logger, logging.WARNING
+                )
+
+                # Check if checkpoint has safetensors format
+                checkpoint_dir = Path(resume_from_checkpoint)
+                safetensors_files = list(checkpoint_dir.glob("*.safetensors"))
+                pytorch_model_exists = (checkpoint_dir / "pytorch_model.bin").exists()
+
+                if pytorch_model_exists and not safetensors_files:
+                    log_on_main(
+                        "Checkpoint uses pytorch_model.bin format which may cause issues. "
+                        "Consider converting to safetensors format or upgrading PyTorch to 2.6+",
+                        logger, logging.WARNING
+                    )
+
+                    # Ask user if they want to continue
+                    log_on_main(
+                        "Attempting to continue with checkpoint loading. "
+                        "If this fails, please upgrade PyTorch or use safetensors format.",
+                        logger, logging.WARNING
+                    )
+
+            resume_checkpoint_path = resume_from_checkpoint
+            log_on_main(f"Resuming training from checkpoint: {resume_checkpoint_path}", logger)
+            # When resuming, use the same output directory as the checkpoint
+            # or create a new one if specified differently
+            if original_output_dir == "./output/":
+                # If using default output dir, derive from checkpoint path
+                checkpoint_parent = Path(resume_checkpoint_path).parent
+                if checkpoint_parent.name.startswith("run-"):
+                    output_dir = checkpoint_parent
+                    log_on_main(f"Continuing training in existing directory: {output_dir}", logger)
+                else:
+                    output_dir = get_next_path("run", base_dir=Path(original_output_dir), file_type="")
+                    log_on_main(f"Creating new run directory: {output_dir}", logger)
+            else:
+                output_dir = Path(original_output_dir)
+                log_on_main(f"Using specified output directory: {output_dir}", logger)
+        else:
+            log_on_main(f"Invalid checkpoint path: {resume_from_checkpoint}. Starting fresh training.", logger, logging.WARNING)
+            resume_checkpoint_path = None
+            output_dir = get_next_path("run", base_dir=Path(original_output_dir), file_type="")
+    else:
+        output_dir = get_next_path("run", base_dir=Path(original_output_dir), file_type="")
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(
@@ -684,9 +823,44 @@ def main(
         args=training_args,
         train_dataset=shuffled_train_dataset,
     )
-    log_on_main("Training", logger)
 
-    trainer.train()
+    if resume_checkpoint_path:
+        log_on_main(f"Resuming training from checkpoint: {resume_checkpoint_path}", logger)
+    else:
+        log_on_main("Starting fresh training", logger)
+
+    # Try to start training with error handling for compatibility issues
+    try:
+        trainer.train(resume_from_checkpoint=resume_checkpoint_path)
+    except ValueError as e:
+        if "torch.load" in str(e) and "vulnerability" in str(e):
+            log_on_main(
+                f"PyTorch version compatibility error: {str(e)}",
+                logger, logging.ERROR
+            )
+            log_on_main(
+                "Possible solutions:\n"
+                "1. Upgrade PyTorch to version 2.6 or higher: pip install torch>=2.6\n"
+                "2. Convert checkpoint to safetensors format\n"
+                "3. Start fresh training without checkpoint",
+                logger, logging.ERROR
+            )
+
+            if resume_checkpoint_path:
+                log_on_main("Attempting to start fresh training instead...", logger, logging.WARNING)
+                try:
+                    trainer.train(resume_from_checkpoint=None)
+                except Exception as fallback_error:
+                    log_on_main(f"Fresh training also failed: {fallback_error}", logger, logging.ERROR)
+                    raise
+            else:
+                raise
+        else:
+            # Re-raise other ValueError types
+            raise
+    except Exception as e:
+        log_on_main(f"Training failed with error: {str(e)}", logger, logging.ERROR)
+        raise
 
     if is_main_process():
         model.save_pretrained(output_dir / "checkpoint-final")
@@ -697,6 +871,5 @@ def main(
 
 if __name__ == "__main__":
     logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    logger = logging.getLogger(__file__)
     logger.setLevel(logging.INFO)
     app()
