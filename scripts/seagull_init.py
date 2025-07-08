@@ -39,17 +39,15 @@ def modify_qwen_model_and_save(
 
         print(f"\n正在修改配置参数...")
         # 2. 修改配置参数
+        config.vocab_size = 4096
         config.num_hidden_layers = 12
         config.hidden_size = 768
-        config.num_attention_heads = 12  # 768/12=64
-        config.num_key_value_heads = 6   # 比例可自定
+        # config.num_attention_heads = 12  # 768/12=64
+        # config.num_key_value_heads = 6   # 比例可自定
         config.max_position_embeddings = 512
         config.intermediate_size = 3072  # 768*4
 
-        print(f"修改后模型配置：")
-        print(f"  新层数 (num_hidden_layers): {config.num_hidden_layers}")
-        # print(f"  新 Q 头 (num_attention_heads): {config.num_attention_heads}")
-        # print(f"  新 KV 头 (num_key_value_heads): {config.num_key_value_heads}")
+        print(f"修改后模型配置：: {config.to_dict()}")
 
         # 3. 创建新的模型实例（不加载预训练权重，只根据新配置初始化结构）
         print(f"\n正在根据新配置创建新的模型结构...")
@@ -79,7 +77,7 @@ def modify_qwen_model_and_save(
 if __name__ == "__main__":
     # 执行函数
     modify_qwen_model_and_save(
-        model_name="/data/cuizhengliang/llm_hub/Qwen/Qwen3-0.6B",
+        model_name="/data/cuizhengliang/llm_hub/Qwen/Qwen2.5-0.5B",
         target_num_layers=14,
         target_num_key_value_heads=14,
         output_dir="ckpt/seagull"
