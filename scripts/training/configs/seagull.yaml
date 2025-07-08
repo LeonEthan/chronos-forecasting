@@ -18,7 +18,7 @@ shuffle_buffer_length: 20_000
 gradient_accumulation_steps: 1
 model_id: /data/cuizhengliang/chronos-forecasting/scripts/ckpt/seagull
 model_type: causal
-random_init: false
+random_init: true
 tie_embeddings: true
 output_dir: ./output/
 fp16: false
@@ -29,9 +29,9 @@ tokenizer_kwargs:
   high_limit: 15.0
 n_tokens: 4096
 lr_scheduler_type: linear
-warmup_ratio: 0.1
+warmup_ratio: 0.0
 dataloader_num_workers: 4
-max_missing_prop: 0.1
+max_missing_prop: 0.9
 use_eos_token: true
 
 # Resume from checkpoint configuration
