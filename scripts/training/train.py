@@ -19,6 +19,13 @@ from typer_config import use_yaml_config
 import numpy as np
 import torch
 import torch.distributed as dist
+
+# Configure torch._dynamo to handle T5Gemma model compilation issues
+try:
+    import torch._dynamo
+    torch._dynamo.config.suppress_errors = True
+except ImportError:
+    pass
 from torch.utils.data import IterableDataset, get_worker_info
 import transformers
 from transformers import (
@@ -258,19 +265,48 @@ def load_model(
     AutoModelClass = (
         AutoModelForSeq2SeqLM if model_type == "seq2seq" else AutoModelForCausalLM
     )
+
+    # Check if this is a T5Gemma model
+    is_t5gemma = "t5gemma" in model_id.lower()
+
     if random_init:
         log_on_main("Using random initialization", logger)
         config = AutoConfig.from_pretrained(model_id)
         if isinstance(config, T5Config):
             # The default initializer_factor (1.0) in transformers is too large
             config.initializer_factor = 0.05
+
+        # Handle T5Gemma specific configuration
+        if is_t5gemma:
+            log_on_main("Detected T5Gemma model, applying specific configurations", logger)
+            # For T5Gemma, we need to be careful with vocab size changes
+            # as it has a complex architecture with encoder/decoder having different vocab sizes
+            if hasattr(config, 'encoder') and hasattr(config.encoder, 'vocab_size'):
+                config.encoder.vocab_size = vocab_size
+            if hasattr(config, 'decoder') and hasattr(config.decoder, 'vocab_size'):
+                config.decoder.vocab_size = vocab_size
+            # Also set the main vocab_size if it exists
+            if hasattr(config, 'vocab_size'):
+                config.vocab_size = vocab_size
+
         config.tie_word_embeddings = tie_embeddings
         model = AutoModelClass.from_config(config)
     else:
         log_on_main(f"Using pretrained initialization from {model_id}", logger)
         model = AutoModelClass.from_pretrained(model_id)
 
-    model.resize_token_embeddings(vocab_size)
+    # Handle vocab size resizing carefully for T5Gemma
+    if is_t5gemma:
+        log_on_main(f"Resizing T5Gemma embeddings from original size to {vocab_size}", logger)
+        # For T5Gemma, we need to be more careful about resizing embeddings
+        # as it might have different embedding structures
+        try:
+            model.resize_token_embeddings(vocab_size)
+        except Exception as e:
+            log_on_main(f"Warning: Could not resize embeddings for T5Gemma model: {e}", logger)
+            log_on_main("Continuing without resizing embeddings - this may cause issues", logger)
+    else:
+        model.resize_token_embeddings(vocab_size)
 
     model.config.pad_token_id = model.generation_config.pad_token_id = pad_token_id
     model.config.eos_token_id = model.generation_config.eos_token_id = eos_token_id

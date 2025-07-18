@@ -8,21 +8,22 @@ context_length: 512
 prediction_length: 64
 min_past: 60
 max_steps: 200_000
-save_steps: 20_000
+save_steps: 100_000
 log_steps: 500
 per_device_train_batch_size: 8
 learning_rate: 0.001
 optim: adamw_torch_fused
 num_samples: 20
-shuffle_buffer_length: 20_000
-gradient_accumulation_steps: 1
-model_id: /data/cuizhengliang/chronos-forecasting/scripts/ckpt/seagull
-model_type: causal
+shuffle_buffer_length: 100_000
+gradient_accumulation_steps: 2
+model_id: google/t5-efficient-small
+model_type: seq2seq
 random_init: true
 tie_embeddings: true
 output_dir: ./output/
+tf32: true
 fp16: false
-torch_compile: true
+torch_compile: false
 tokenizer_class: "MeanScaleUniformBins"
 tokenizer_kwargs:
   low_limit: -15.0
@@ -32,10 +33,4 @@ lr_scheduler_type: linear
 warmup_ratio: 0.0
 dataloader_num_workers: 1
 max_missing_prop: 0.9
-use_eos_token: false
-
-# Resume from checkpoint configuration
-# Set this to the path of a checkpoint directory to resume training
-# Leave empty or comment out to start fresh training
-resume_from_checkpoint: null
-
+use_eos_token: true

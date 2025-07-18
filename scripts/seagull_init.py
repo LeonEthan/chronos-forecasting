@@ -39,13 +39,13 @@ def modify_qwen_model_and_save(
 
         print(f"\n正在修改配置参数...")
         # 2. 修改配置参数
-        config.vocab_size = 4096
-        config.num_hidden_layers = 12
-        config.hidden_size = 768
+        # config.vocab_size = 4096
+        config.num_hidden_layers = 16
+        # config.hidden_size = 768
         # config.num_attention_heads = 12  # 768/12=64
         # config.num_key_value_heads = 6   # 比例可自定
-        config.max_position_embeddings = 512
-        config.intermediate_size = 3072  # 768*4
+        # config.max_position_embeddings = 512
+        # config.intermediate_size = 3072  # 768*4
 
         print(f"修改后模型配置：: {config.to_dict()}")
 
@@ -77,7 +77,7 @@ def modify_qwen_model_and_save(
 if __name__ == "__main__":
     # 执行函数
     modify_qwen_model_and_save(
-        model_name="/data/cuizhengliang/llm_hub/Qwen/Qwen2.5-0.5B",
+        model_name="/data/cuizhengliang/llm_hub/Qwen/Qwen3-0.6B",
         target_num_layers=14,
         target_num_key_value_heads=14,
         output_dir="ckpt/seagull"
