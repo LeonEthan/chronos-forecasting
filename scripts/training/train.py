@@ -36,6 +36,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
+# No need for manual scheduler imports since TrainingArguments handles it automatically
 import accelerate
 import gluonts
 from gluonts.dataset.common import FileDataset
@@ -52,6 +53,9 @@ from gluonts.transform import (
 )
 
 from chronos import ChronosConfig, ChronosTokenizer
+
+
+
 
 
 app = typer.Typer(pretty_exceptions_enable=False)
@@ -653,6 +657,9 @@ def main(
     use_eos_token: bool = True,
     lr_scheduler_type: str = "linear",
     warmup_ratio: float = 0.0,
+    warmup_steps: Optional[int] = None,
+    decay_steps: Optional[int] = None,
+    min_lr_ratio: float = 0.0,
     dataloader_num_workers: int = 1,
     max_missing_prop: float = 0.9,
     num_samples: int = 20,
@@ -831,12 +838,32 @@ def main(
     ).shuffle(shuffle_buffer_length=shuffle_buffer_length)
 
     # Define training args
+    log_on_main(f"Using scheduler: {lr_scheduler_type} with warmup_ratio={warmup_ratio}", logger)
+    if warmup_steps is not None:
+        log_on_main(f"Warmup steps: {warmup_steps}", logger)
+    if decay_steps is not None:
+        log_on_main(f"Decay steps: {decay_steps}", logger)
+    if min_lr_ratio != 0.0:
+        log_on_main(f"Min LR ratio: {min_lr_ratio}", logger)
+
+    # Prepare scheduler kwargs for WSD scheduler
+    scheduler_kwargs = {}
+    if lr_scheduler_type == "warmup_stable_decay":
+        if decay_steps is not None:
+            scheduler_kwargs["num_decay_steps"] = decay_steps
+        if min_lr_ratio != 0.0:
+            scheduler_kwargs["min_lr_ratio"] = min_lr_ratio
+        # Add other WSD-specific parameters
+        scheduler_kwargs["warmup_type"] = "linear"
+        scheduler_kwargs["decay_type"] = "linear"
+
     training_args = TrainingArguments(
         output_dir=str(output_dir),
         per_device_train_batch_size=per_device_train_batch_size,
         learning_rate=learning_rate,
         lr_scheduler_type=lr_scheduler_type,
         warmup_ratio=warmup_ratio,
+        warmup_steps=warmup_steps if warmup_steps is not None else 0,
         optim=optim,
         logging_dir=str(output_dir / "logs"),
         logging_strategy="steps",
@@ -851,14 +878,20 @@ def main(
         torch_compile=torch_compile,
         ddp_find_unused_parameters=False,
         remove_unused_columns=False,
+        lr_scheduler_kwargs=scheduler_kwargs if scheduler_kwargs else None,
     )
 
-    # Create Trainer instance
+    # Create Trainer instance - TrainingArguments will handle WSD scheduler automatically
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=shuffled_train_dataset,
     )
+
+    if lr_scheduler_type == "warmup_stable_decay":
+        log_on_main(f"Using built-in WSD scheduler with warmup={warmup_steps}, decay={decay_steps}, min_lr_ratio={min_lr_ratio}", logger)
+    else:
+        log_on_main(f"Using {lr_scheduler_type} scheduler", logger)
 
     if resume_checkpoint_path:
         log_on_main(f"Resuming training from checkpoint: {resume_checkpoint_path}", logger)
